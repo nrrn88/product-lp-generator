@@ -1,0 +1,1 @@
+- [x] `prompts.py`の124行目付近のSyntaxErrorを修正する <!-- id: 0 -->
