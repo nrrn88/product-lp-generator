@@ -1,4 +1,6 @@
-import google.generativeai as genai
+from google import genai
+from google.genai import types
+import base64
 import os
 
 # システムプロンプトの定義
@@ -19,12 +21,9 @@ SYSTEM_INSTRUCTION = """
 以下のXMLライクなタグで区切って出力してください。これ以外のテキストは含めないでください。
 
 <metadata>
-ここに推奨タイトル、推奨ディスクリプション、画像プロンプトを含めてください。形式は以下の通り:
+ここに推奨タイトル、推奨ディスクリプションを含めてください。形式は以下の通り:
 Recommended Title: [32文字以内のタイトル]
 Recommended Description: [クリック率重視のディスクリプション]
-Image Prompts:
-- [画像プロンプト1]
-- [画像プロンプト2]
 </metadata>
 
 <html_content>
@@ -32,15 +31,16 @@ Image Prompts:
 **注意**: 
 - ここにレビューや参考リンクは含めないでください。
 - `h1`, `h2`, `h3` を論理的に使用。
-- 構造化データ（JSON-LD）はここに含めてください（Product, FAQPage schema）。
-- styleタグで最低限のCSSを含めてください。
+- 構造化データ（JSON-LD）は**含めないでください**（記事本文のみ必要です）。
+- **重要: デザインは全てインラインスタイル（style="..."）で記述してください。** `<style>`タグや`class`による外部指定は使用しないでください。
 - 構成: 
   1. 商品ヘッダー（h1, キャッチコピー）
   2. 概要・結論
-  3. 成分・作用機序（表形式）
-  4. 効果・効能
-  5. 用法・用量・副作用・注意点
-  6. よくある質問 (FAQ)
+  3. この医薬品が必要な人・不要な人（ターゲット層の明確化）
+  4. 成分・作用機序（表形式: border等もstyleで指定）
+  5. 効果・効能
+  6. 用法・用量・副作用・注意点
+  7. よくある質問 (FAQ)
 </html_content>
 
 <reviews>
@@ -61,12 +61,13 @@ Image Prompts:
 - 薬機法で完全にアウトな表現。
 """
 
-def generate_content(api_key, context_text, product_name):
+
+
+def generate_content(api_key, context_text, product_name, model_name=None):
     """
-    Gemini APIを呼び出してHTMLを生成する
-    モデル名が見つからないエラー(404)対策として、複数のモデル名を順次試行する
+    Gemini API (google.genai) を呼び出してHTMLを生成する
     """
-    genai.configure(api_key=api_key)
+    client = genai.Client(api_key=api_key)
 
     user_prompt = f"""
     以下の情報を元に、商品「{product_name}」の詳細ページHTMLを作成してください。
@@ -79,56 +80,40 @@ def generate_content(api_key, context_text, product_name):
     - HTMLはそのままコピペして使える品質に仕上げてください。
     """
 
-
+    # モデル名の候補（ユーザー環境で確認されたモデルを優先）
+    # 2026年現在の最新モデル群
+    candidates = [
+        "gemini-3-pro-preview",       # Gemini 3 Pro Preview
+        "gemini-2.5-pro",             # Gemini 2.5 Pro
+        "gemini-2.5-flash",           # Gemini 2.5 Flash
+        "gemini-2.0-flash",           # Gemini 2.0 Flash
+        "gemini-2.0-flash-001",
+        "gemini-1.5-pro-002",         # Fallback
+        "gemini-1.5-flash-002"
+    ]
     
-    # 利用可能なモデルを動的に検索して使用する
-    valid_model_name = None
-    errors = [] # エラーログ収集用変数を初期化
-    try:
-        # 具体的なモデル名の候補（優先度順）
-        # APIによっては "models/" プレフィックスが必要な場合があるため両方用意
-        candidates = [
-            "gemini-1.5-flash", "models/gemini-1.5-flash",
-            "gemini-1.5-flash-001", "models/gemini-1.5-flash-001",
-            "gemini-1.5-flash-latest", "models/gemini-1.5-flash-latest",
-            "gemini-pro", "models/gemini-pro",
-            "gemini-1.5-pro", "models/gemini-1.5-pro" 
-        ]
-        
-        # 1. まずは候補リストを順に試す（これが一番速い）
-        for cand in candidates:
-            try:
-                model = genai.GenerativeModel(model_name=cand, system_instruction=SYSTEM_INSTRUCTION)
-                # テスト呼び出し（実際に通るか確認）ではなく、まずは生成を試みる
-                response = model.generate_content(user_prompt)
-                return response.text
-            except Exception as e:
-                errors.append((cand, str(e)))
-                continue
+    # 指定されたモデルがあれば最優先で追加
+    if model_name:
+        candidates.insert(0, model_name)
+    
+    errors = []
+    
+    for m_name in candidates:
+        try:
+            response = client.models.generate_content(
+                model=m_name,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION
+                )
+            )
+            return response.text
+        except Exception as e:
+            errors.append((m_name, str(e)))
+            continue
 
-        # 2. 全滅した場合、サーバーからリストを取得して使えるものを探す
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                if 'flash' in m.name or 'pro' in m.name:
-                    try:
-                        model = genai.GenerativeModel(model_name=m.name, system_instruction=SYSTEM_INSTRUCTION)
-                        response = model.generate_content(user_prompt)
-                        return response.text
-                    except Exception as e:
-                        errors.append((m.name, str(e)))
-                        continue
-        
-    except Exception as e:
-        return f"Error: 生成準備中に予期せぬエラーが発生しました: {str(e)}"
+    # 全滅した場合
+    error_details = "\\n".join([f"- {m}: {err}" for m, err in errors])
+    return f"Error: 生成に失敗しました。APIキーを確認してください。詳細:\\n{error_details}"
 
-    # ここまで来てしまった場合（全滅）
-    # エラーの詳細を表示してデバッグしやすくする
-    error_details = "\\n".join([f"- {m}: {err}" for m, err in errors[:3]])
-    return f"""Error: 利用可能なGeminiモデルが見つかりませんでした。
-APIキーが「Gemini API」を利用できる権限を持っていない可能性があります（デフォルトキーなど）。
-Google AI Studioで「Create API key」ボタンから **新しいキーを作成** して試してください。
 
-[発生したエラー詳細]
-{error_details}
-...
-"""

@@ -1,6 +1,8 @@
 import streamlit as st
 import scraper
+import importlib
 import prompts
+importlib.reload(prompts) # モジュールの変更を強制的に反映
 import os
 import re
 import json
@@ -26,6 +28,28 @@ if not api_key:
     st.warning("⚠️ APIキーが入力されていません")
 else:
     st.success("APIキーが設定されました！")
+
+    st.markdown("---")
+    
+    st.caption("🤖 モデル設定")
+    # テキスト生成モデルの選択
+    text_model = st.selectbox(
+        "テキスト生成モデル",
+        options=[
+            "gemini-3-pro-preview",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro-002"
+        ],
+        index=0,
+        help="HTMLとコンテンツ生成に使用するモデル"
+    )
+    
+
+
+
+
 
 st.markdown("---")
 
@@ -94,8 +118,8 @@ with col1:
                     context_text += f"\n--- User Note ---\n{additional_info}\n"
 
                 # 2. AI生成
-                st.write("🧠 AIが構成とコンテンツを生成中 (SEO/AIO対策)...")
-                raw_response = prompts.generate_content(api_key, context_text, product_name)
+                st.write(f"🧠 AI ({text_model}) が構成とコンテンツを生成中 (SEO/AIO対策)...")
+                raw_response = prompts.generate_content(api_key, context_text, product_name, text_model)
                 
                 st.session_state['raw_response'] = raw_response
                 st.session_state['product_name'] = product_name
@@ -121,7 +145,13 @@ with col2:
             with tab1:
                 st.caption("※スタイルは簡易的なものです。")
                 if html_content:
-                    st.components.v1.html(html_content, height=600, scrolling=True)
+                    # プレビュー用に背景色を白に固定するラッパーを追加
+                    preview_html = f"""
+                    <div style="background-color: #ffffff; color: #333333; padding: 20px; border-radius: 5px;">
+                        {html_content}
+                    </div>
+                    """
+                    st.components.v1.html(preview_html, height=600, scrolling=True)
                 else:
                     st.warning("HTMLコンテンツが見つかりませんでした。")
             
@@ -139,7 +169,38 @@ with col2:
             
             with tab3:
                 metadata_text = parsed_data.get("metadata", "")
-                st.text_area("メタデータ & 画像プロンプト", metadata_text, height=300)
+                
+                # タイトルとディスクリプションを抽出
+                title_match = re.search(r"Recommended Title:\s*(.*)", metadata_text)
+                desc_match = re.search(r"Recommended Description:\s*(.*)", metadata_text)
+                
+                rec_title = title_match.group(1).strip() if title_match else ""
+                rec_desc = desc_match.group(1).strip() if desc_match else ""
+
+                st.subheader("推奨タイトル")
+                st.code(rec_title, language=None)
+                
+                st.subheader("推奨ディスクリプション")
+                st.code(rec_desc, language=None)
+                
+                st.markdown("---")
+                st.subheader("推奨画像プロンプト")
+                st.caption("以下のプロンプトを他の画像生成ツール（Midjourney、DALL-E3など）で使用してください。")
+
+                st.caption("🎨 抽象イメージ (効果・悩み解決)")
+                # プロンプト抽出はしていないので、metadata全体から参照するか、ユーザーにRawデータを見てもらう
+                # ここでは簡易的に正規表現で再抽出する
+                img_abstract_match = re.search(r"(?:-|\*)\s*(?:\*\*)?\[Abstract\](?:\*\*)?:?\s*(.*)", metadata_text, re.IGNORECASE)
+                if img_abstract_match:
+                    st.code(img_abstract_match.group(1).strip(), language=None)
+
+                st.caption("😊 人物イメージ (信頼感・笑顔)")
+                img_person_match = re.search(r"(?:-|\*)\s*(?:\*\*)?\[Person\](?:\*\*)?:?\s*(.*)", metadata_text, re.IGNORECASE)
+                if img_person_match:
+                    st.code(img_person_match.group(1).strip(), language=None)
+                
+                with st.expander("全てのメタデータ & 生データ"):
+                    st.text_area("Raw Metadata", metadata_text, height=200)
                 
             with tab4:
                 reviews_text = parsed_data.get("reviews", "")
@@ -160,6 +221,8 @@ with col2:
             with tab5:
                 ref_text = parsed_data.get("references", "")
                 st.markdown(ref_text)
+        
+
         
 
 
