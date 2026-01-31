@@ -16,13 +16,13 @@ st.set_page_config(
 )
 
 # タイトルと説明
-st.title("💊 医薬品EC 商品詳細ページ自動生成ツール")
+st.title("医薬品商品詳細ページ自動生成ツール")
 st.markdown("""
 競合サイトのURLを入力して、SEO・AIO（AI Overview）に最適化された商品ページHTMLを自動生成します。
 """)
 
 # APIキー入力（メインエリアに移動）
-st.info("👇 ここに先ほどコピーした「APIキー」を貼り付けてください")
+st.info("GoogleAIStudioのAPIキーを貼り付けてください。")
 api_key = st.text_input("Gemini API Key", type="password", help="Google AI Studioで取得したAPIキーを入力してください")
 if not api_key:
     st.warning("⚠️ APIキーが入力されていません")
