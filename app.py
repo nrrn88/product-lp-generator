@@ -170,15 +170,20 @@ with col2:
             with tab3:
                 metadata_text = parsed_data.get("metadata", "")
                 
-                # タイトルとディスクリプションを抽出
+                # タイトルとディスクリプション、H1を抽出
                 title_match = re.search(r"Recommended Title:\s*(.*)", metadata_text)
+                h1_match = re.search(r"Recommended H1:\s*(.*)", metadata_text)
                 desc_match = re.search(r"Recommended Description:\s*(.*)", metadata_text)
                 
                 rec_title = title_match.group(1).strip() if title_match else ""
+                rec_h1 = h1_match.group(1).strip() if h1_match else ""
                 rec_desc = desc_match.group(1).strip() if desc_match else ""
 
                 st.subheader("推奨タイトル")
                 st.code(rec_title, language=None)
+                
+                st.subheader("推奨H1")
+                st.code(rec_h1, language=None)
                 
                 st.subheader("推奨ディスクリプション")
                 st.code(rec_desc, language=None)
