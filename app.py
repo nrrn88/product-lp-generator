@@ -37,10 +37,10 @@ else:
         "テキスト生成モデル",
         options=[
             "gemini-3-pro-preview",
-            "gemini-2.5-pro",
             "gemini-2.5-flash",
             "gemini-2.0-flash",
-            "gemini-1.5-pro-002"
+            "gemini-1.5-pro",
+            "gemini-1.5-flash",
         ],
         index=0,
         help="HTMLとコンテンツ生成に使用するモデル"
@@ -52,6 +52,23 @@ else:
 
 
 st.markdown("---")
+
+def clean_html_tags(html_content):
+    """
+    指定されたタグ（h2-h6, table, ul, ol）から属性（style, class等）を強制的に削除する
+    """
+    # 削除対象のタグ
+    target_tags = ["h2", "h3", "h4", "h5", "h6", "table", "ul", "ol"]
+    
+    cleaned_html = html_content
+    for tag in target_tags:
+        # <tag ...> を <tag> に置換 (閉じタグはそのまま)
+        # 属性がある場合のみ置換するための正規表現
+        # 例: <h2 style="..."> -> <h2>
+        pattern = re.compile(f'<{tag}\\s+[^>]*>', re.IGNORECASE)
+        cleaned_html = pattern.sub(f'<{tag}>', cleaned_html)
+        
+    return cleaned_html
 
 def parse_generated_content(text):
     """
@@ -141,6 +158,8 @@ with col2:
             tab1, tab2, tab3, tab4, tab5 = st.tabs(["🖼️ プレビュー", "📝 HTML", "⚙️ メタデータ", "⭐ レビュー", "🔗 参考リンク"])
             
             html_content = parsed_data.get("html_content", "")
+            # 強制的にタグの属性を削除（見出し等のスタイル混入防止）
+            html_content = clean_html_tags(html_content)
             
             with tab1:
                 st.caption("※スタイルは簡易的なものです。")
